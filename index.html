@@ -84,6 +84,35 @@
       padding: 16px;
     }
 
+    .guide {
+      margin-bottom: 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    .guide b {
+      color: var(--ink);
+    }
+
+    .guide a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .guide a:hover {
+      text-decoration: underline;
+    }
+
+    .guide-line {
+      margin-top: 6px;
+      line-height: 1.55;
+    }
+
     .stack {
       display: grid;
       gap: 14px;
@@ -309,6 +338,12 @@
       <div class="status" id="status">等待上传</div>
     </header>
 
+    <section class="guide">
+      <b>使用约定：</b>
+      <span>推荐把待处理表放在 <b>Sheet1</b>，地区总表放在 <b>Sheet2</b>；地区总表至少包含“地级 / 省份 / 区域”这类列。</span>
+      <div class="guide-line">公式按同一个 Excel 内的 <b>Sheet1 + Sheet2</b> 结构生成，方便复制到 Sheet1 的 A 列检查；如果实际 sheet 名不同，可在左侧调整。<a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
+    </section>
+
     <section class="grid">
       <aside class="panel stack">
         <div class="field">
@@ -356,8 +391,9 @@
         </div>
 
         <div class="field">
-          <label for="outputSheetName">导出总表名</label>
-          <input id="outputSheetName" type="text" value="地区总表">
+          <label for="outputSheetName">公式总表 sheet 名</label>
+          <input id="outputSheetName" type="text" value="Sheet2">
+          <div class="hint">公式默认按 Sheet1 待处理表、Sheet2 地区总表生成。</div>
         </div>
 
         <div class="actions">
