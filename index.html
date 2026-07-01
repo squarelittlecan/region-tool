@@ -82,6 +82,41 @@
       margin-top: 16px;
     }
 
+    .module-tabs {
+      display: flex;
+      gap: 8px;
+      margin: 16px 0;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .module-tab {
+      flex: 1;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid transparent;
+    }
+
+    .module-tab:hover {
+      background: var(--soft);
+    }
+
+    .module-tab.active {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .module-panel {
+      display: none;
+    }
+
+    .module-panel.active {
+      display: block;
+    }
+
     .tool-heading {
       display: flex;
       align-items: center;
@@ -375,12 +410,17 @@
     </header>
 
     <section class="guide">
-      <b>使用约定：</b>
-      <span>推荐把待处理表放在 <b>Sheet1</b>，地区总表放在 <b>Sheet2</b>；地区总表至少包含“地级 / 省份 / 区域”这类列。</span>
-      <div class="guide-line">公式按同一个 Excel 内的 <b>Sheet1 + Sheet2</b> 结构生成，方便复制到 Sheet1 的 A 列检查；如果实际 sheet 名不同，可在左侧调整。<a href="./docs.html">详细说明</a> · <a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
+      <b>使用说明：</b>
+      <span>先在下方选择功能模块。图片转表格适合清晰截图；分区推荐使用 <b>Sheet1</b> 待处理表 + <b>Sheet2</b> 地区总表。</span>
+      <div class="guide-line"><a href="./docs.html">详细说明</a> · <a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
     </section>
 
-    <section class="tool-section">
+    <nav class="module-tabs" aria-label="功能选择">
+      <button class="module-tab active" type="button" data-module="ocr">功能一：图片转表格</button>
+      <button class="module-tab" type="button" data-module="region">功能二：分区</button>
+    </nav>
+
+    <section class="tool-section module-panel active" id="module-ocr">
       <div class="tool-heading">
         <h2>功能一：图片转 Excel 表格</h2>
         <span class="hint">适合清晰截图或扫描件；复杂表格识别后可直接编辑结果。</span>
@@ -426,10 +466,10 @@
       </section>
     </section>
 
-    <section class="tool-section">
+    <section class="tool-section module-panel" id="module-region">
       <div class="tool-heading">
         <h2>功能二：分区</h2>
-        <span class="hint">根据 Sheet2 地区总表，为 Sheet1 的机构生成区域、省份或地级。</span>
+        <span class="hint">根据 Sheet2 地区总表，为 Sheet1 的机构生成区域、省份或地级；公式也按 Sheet1 + Sheet2 结构生成。</span>
       </div>
     <section class="grid">
       <aside class="panel stack">
@@ -590,7 +630,9 @@
       unmatchedCount: document.getElementById("unmatchedCount"),
       unmatchedText: document.getElementById("unmatchedText"),
       status: document.getElementById("status"),
-      message: document.getElementById("message")
+      message: document.getElementById("message"),
+      moduleTabs: [...document.querySelectorAll(".module-tab")],
+      modulePanels: [...document.querySelectorAll(".module-panel")]
     };
 
     const state = {
@@ -607,6 +649,16 @@
     const badColumnHints = ["产品", "代码", "金额", "保有", "销量", "赎回", "份额", "日期", "类型"];
     const mapKeyHints = ["地级", "城市", "市", "区县", "县", "省份"];
     const areaHints = ["区域", "地区", "片区"];
+
+    function switchModule(moduleName) {
+      els.moduleTabs.forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.module === moduleName);
+      });
+      els.modulePanels.forEach(panel => {
+        panel.classList.toggle("active", panel.id === `module-${moduleName}`);
+      });
+      setStatus(moduleName === "ocr" ? "图片转表格" : "分区");
+    }
 
     function setMessage(text, type = "") {
       els.message.textContent = text;
@@ -1206,8 +1258,12 @@
     els.copyFormulaInlineBtn.addEventListener("click", copyFormulaOutput);
     els.copyUnmatchedBtn.addEventListener("click", copyUnmatchedOutput);
     els.downloadBtn.addEventListener("click", downloadOutput);
+    els.moduleTabs.forEach(tab => {
+      tab.addEventListener("click", () => switchModule(tab.dataset.module));
+    });
 
     setMessage("上传待处理表后开始。");
+    switchModule("ocr");
   </script>
 </body>
 </html>
