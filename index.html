@@ -177,6 +177,12 @@
       background: var(--soft);
     }
 
+    button.mini {
+      height: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
     button:disabled {
       cursor: not-allowed;
       opacity: .5;
@@ -344,7 +350,7 @@
             <select id="mapKeyColumn"></select>
           </div>
           <div class="field">
-            <label for="mapAreaColumn">区域列</label>
+            <label for="mapAreaColumn">输出列</label>
             <select id="mapAreaColumn"></select>
           </div>
         </div>
@@ -386,7 +392,8 @@
 
         <div class="panel stack">
           <div class="actions">
-            <span class="pill">区域结果</span>
+            <span class="pill" id="resultTitle">输出结果</span>
+            <button class="secondary mini" id="copyResultInlineBtn" disabled>复制</button>
             <span class="hint">粘贴到 Excel 的 A 列；首格是表头，下面是直接结果。</span>
           </div>
           <textarea id="resultText" spellcheck="false" readonly></textarea>
@@ -395,6 +402,7 @@
         <div class="panel stack">
           <div class="actions">
             <span class="pill">对应公式</span>
+            <button class="secondary mini" id="copyFormulaInlineBtn" disabled>复制</button>
             <span class="hint">需要检查逻辑时复制这一列；首格是表头，下面是公式。</span>
           </div>
           <textarea class="compact" id="formulaText" spellcheck="false" readonly></textarea>
@@ -403,6 +411,7 @@
         <div class="panel stack">
           <div class="actions">
             <span class="pill">未匹配行</span>
+            <button class="secondary mini" id="copyUnmatchedBtn" disabled>复制</button>
             <span class="hint">显示行号和机构名，少量未匹配可手动补。</span>
           </div>
           <textarea class="compact" id="unmatchedText" spellcheck="false" readonly></textarea>
@@ -433,9 +442,13 @@
       generateBtn: document.getElementById("generateBtn"),
       copyResultBtn: document.getElementById("copyResultBtn"),
       copyFormulaBtn: document.getElementById("copyFormulaBtn"),
+      copyResultInlineBtn: document.getElementById("copyResultInlineBtn"),
+      copyFormulaInlineBtn: document.getElementById("copyFormulaInlineBtn"),
+      copyUnmatchedBtn: document.getElementById("copyUnmatchedBtn"),
       downloadBtn: document.getElementById("downloadBtn"),
       resultText: document.getElementById("resultText"),
       formulaText: document.getElementById("formulaText"),
+      resultTitle: document.getElementById("resultTitle"),
       preview: document.getElementById("preview"),
       previewHint: document.getElementById("previewHint"),
       rowCount: document.getElementById("rowCount"),
@@ -455,8 +468,8 @@
       generated: null
     };
 
-    const columnHints = ["网点", "营业部", "分公司", "机构", "销售商", "渠道", "名称"];
-    const strongColumnHints = ["网点", "营业部", "分公司", "一级分公司", "二级分公司"];
+    const columnHints = ["网点", "营业部", "分公司", "分行", "支行", "机构", "销售商", "渠道", "名称"];
+    const strongColumnHints = ["网点", "营业部", "分公司", "一级分公司", "二级分公司", "分行", "支行", "营业所", "营销中心", "管理部", "服务部"];
     const badColumnHints = ["产品", "代码", "金额", "保有", "销量", "赎回", "份额", "日期", "类型"];
     const mapKeyHints = ["地级", "城市", "市", "区县", "县", "省份"];
     const areaHints = ["区域", "地区", "片区"];
@@ -575,7 +588,8 @@
           if (!value) continue;
           const area = resolveArea(value, entries);
           if (area !== "未找到") score += 3;
-          if (value.includes("营业部") || value.includes("分公司")) score += 5;
+          if (value.includes("营业部") || value.includes("分公司") || value.includes("分行") || value.includes("支行")) score += 5;
+          if (value.includes("营业所") || value.includes("营销中心") || value.includes("管理部") || value.includes("服务部")) score += 3;
           if (value.includes("证券")) score += 1;
         }
         if (score > best.score) best = { index, score };
@@ -615,6 +629,15 @@
 
     function selectedColumnLetter(select) {
       return XLSX.utils.encode_col(Number(select.value));
+    }
+
+    function selectedHeader(select) {
+      const rows = sheetRows(select === els.mapAreaColumn ? mapWorkbook() : state.sourceWorkbook, select === els.mapAreaColumn ? mapSheetName() : sourceSheetName());
+      return normalizeText(rows[0]?.[Number(select.value || 0)]) || "输出";
+    }
+
+    function outputHeader() {
+      return selectedHeader(els.mapAreaColumn);
     }
 
     function mapLastRowNumber() {
@@ -660,8 +683,14 @@
       fillSelect(els.mapKeyColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestIndex(headers, mapKeyHints, 0));
       fillSelect(els.mapAreaColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestIndex(headers, areaHints, Math.min(2, headers.length - 1)));
       state.mapEntries = mapEntries();
+      updateOutputTitle();
       refreshNameColumns();
       updatePreview();
+    }
+
+    function updateOutputTitle() {
+      const header = outputHeader();
+      els.resultTitle.textContent = `${header}结果`;
     }
 
     function updateReadyState() {
@@ -707,8 +736,10 @@
       const lastRow = range.e.r + 1;
       state.mapEntries = mapEntries();
       const nameIndex = Number(els.nameColumn.value || 0);
-      const results = ["区域"];
-      const formulas = ["区域"];
+      const header = outputHeader();
+      updateOutputTitle();
+      const results = [header];
+      const formulas = [header];
       const unmatched = [];
       let lastArea = "";
       for (let row = firstDataRow; row <= lastRow; row += 1) {
@@ -731,13 +762,16 @@
       els.unmatchedCount.textContent = unmatched.length;
       els.copyResultBtn.disabled = false;
       els.copyFormulaBtn.disabled = false;
+      els.copyResultInlineBtn.disabled = false;
+      els.copyFormulaInlineBtn.disabled = false;
+      els.copyUnmatchedBtn.disabled = false;
       els.downloadBtn.disabled = false;
       state.generated = { results, formulas, unmatched, firstDataRow, lastRow };
       if (unmatched.length) {
         const sample = unmatched.slice(0, 3).map(item => item.row).join("、");
-        setMessage(`已生成区域结果；${unmatched.length} 行未匹配，如第 ${sample} 行。`, "warn");
+        setMessage(`已生成${header}结果；${unmatched.length} 行未匹配，如第 ${sample} 行。`, "warn");
       } else {
-        setMessage("已生成区域结果，全部匹配。", "good");
+        setMessage(`已生成${header}结果，全部匹配。`, "good");
       }
       updatePreview(true);
     }
@@ -750,10 +784,10 @@
       const outputRows = rows.map((row, index) => {
         if (hasRegion) {
           const copy = row.slice();
-          copy[0] = index === 0 ? "区域" : "";
+          copy[0] = index === 0 ? outputHeader() : "";
           return copy;
         }
-        if (index === 0) return ["区域", ...row];
+        if (index === 0) return [outputHeader(), ...row];
         if (index + 1 < firstDataRow) return ["", ...row];
         return ["", ...row];
       });
@@ -782,12 +816,17 @@
 
     async function copyResultOutput() {
       await navigator.clipboard.writeText(els.resultText.value);
-      setMessage("区域结果已复制。", "good");
+      setMessage(`${outputHeader()}结果已复制。`, "good");
     }
 
     async function copyFormulaOutput() {
       await navigator.clipboard.writeText(els.formulaText.value);
       setMessage("公式列已复制。", "good");
+    }
+
+    async function copyUnmatchedOutput() {
+      await navigator.clipboard.writeText(els.unmatchedText.value);
+      setMessage("未匹配行已复制。", "good");
     }
 
     async function downloadOutput() {
@@ -821,7 +860,7 @@
           ? (state.generated?.results[rowIndex - firstDataRow + 2] || resolveArea(row[nameIndex] || "", previewEntries))
           : "";
         const displayCells = rowIndex === 0
-          ? ["区域", ...row.slice(0, 5)]
+          ? [outputHeader(), ...row.slice(0, 5)]
           : [areaValue, ...row.slice(0, 5)];
         displayCells.forEach((value, colIndex) => {
           const cell = document.createElement(rowIndex === 0 ? "th" : "td");
@@ -849,6 +888,9 @@
         state.generated = null;
         els.copyResultBtn.disabled = true;
         els.copyFormulaBtn.disabled = true;
+        els.copyResultInlineBtn.disabled = true;
+        els.copyFormulaInlineBtn.disabled = true;
+        els.copyUnmatchedBtn.disabled = true;
         els.downloadBtn.disabled = true;
         els.resultText.value = "";
         els.formulaText.value = "";
@@ -876,6 +918,9 @@
         state.generated = null;
         els.copyResultBtn.disabled = true;
         els.copyFormulaBtn.disabled = true;
+        els.copyResultInlineBtn.disabled = true;
+        els.copyFormulaInlineBtn.disabled = true;
+        els.copyUnmatchedBtn.disabled = true;
         els.downloadBtn.disabled = true;
         els.resultText.value = "";
         els.formulaText.value = "";
@@ -904,6 +949,7 @@
     });
     els.mapAreaColumn.addEventListener("change", () => {
       state.mapEntries = mapEntries();
+      updateOutputTitle();
       if (state.generated) generate();
       else updatePreview();
     });
@@ -914,6 +960,9 @@
     els.generateBtn.addEventListener("click", generate);
     els.copyResultBtn.addEventListener("click", copyResultOutput);
     els.copyFormulaBtn.addEventListener("click", copyFormulaOutput);
+    els.copyResultInlineBtn.addEventListener("click", copyResultOutput);
+    els.copyFormulaInlineBtn.addEventListener("click", copyFormulaOutput);
+    els.copyUnmatchedBtn.addEventListener("click", copyUnmatchedOutput);
     els.downloadBtn.addEventListener("click", downloadOutput);
 
     setMessage("上传待处理表后开始。");
