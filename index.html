@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>区域列公式生成器</title>
+  <title>区域列生成器</title>
   <script src="./xlsx-lite.js"></script>
   <style>
     :root {
@@ -133,6 +133,10 @@
       white-space: pre;
     }
 
+    textarea.compact {
+      min-height: 160px;
+    }
+
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -186,7 +190,7 @@
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
     }
 
@@ -269,6 +273,10 @@
       color: var(--good);
     }
 
+    .message.warn {
+      color: var(--warn);
+    }
+
     @media (max-width: 900px) {
       .grid {
         grid-template-columns: 1fr;
@@ -289,8 +297,8 @@
   <main class="app">
     <header>
       <div>
-        <h1>区域列公式生成器</h1>
-        <div class="sub">本地读取 Excel，生成可复制的“区域”第一列，也可导出带公式的新表。</div>
+        <h1>区域列生成器</h1>
+        <div class="sub">本地读取 Excel，直接生成可复制的区域结果，也可查看对应公式。</div>
       </div>
       <div class="status" id="status">等待上传</div>
     </header>
@@ -348,7 +356,8 @@
 
         <div class="actions">
           <button id="generateBtn" disabled>生成</button>
-          <button class="secondary" id="copyBtn" disabled>复制第一列</button>
+          <button class="secondary" id="copyResultBtn" disabled>复制结果</button>
+          <button class="secondary" id="copyFormulaBtn" disabled>复制公式</button>
           <button class="secondary" id="downloadBtn" disabled>下载 Excel</button>
         </div>
 
@@ -369,14 +378,34 @@
             <b id="previewCount">0</b>
             <span>预览行</span>
           </div>
+          <div class="metric">
+            <b id="unmatchedCount">0</b>
+            <span>未匹配</span>
+          </div>
         </div>
 
         <div class="panel stack">
           <div class="actions">
-            <span class="pill">第一列文本</span>
-            <span class="hint">粘贴到 Excel 的 A 列；首格是表头，下面是公式。</span>
+            <span class="pill">区域结果</span>
+            <span class="hint">粘贴到 Excel 的 A 列；首格是表头，下面是直接结果。</span>
           </div>
-          <textarea id="formulaText" spellcheck="false" readonly></textarea>
+          <textarea id="resultText" spellcheck="false" readonly></textarea>
+        </div>
+
+        <div class="panel stack">
+          <div class="actions">
+            <span class="pill">对应公式</span>
+            <span class="hint">需要检查逻辑时复制这一列；首格是表头，下面是公式。</span>
+          </div>
+          <textarea class="compact" id="formulaText" spellcheck="false" readonly></textarea>
+        </div>
+
+        <div class="panel stack">
+          <div class="actions">
+            <span class="pill">未匹配行</span>
+            <span class="hint">显示行号和机构名，少量未匹配可手动补。</span>
+          </div>
+          <textarea class="compact" id="unmatchedText" spellcheck="false" readonly></textarea>
         </div>
 
         <div class="panel stack">
@@ -402,14 +431,18 @@
       mapAreaColumn: document.getElementById("mapAreaColumn"),
       outputSheetName: document.getElementById("outputSheetName"),
       generateBtn: document.getElementById("generateBtn"),
-      copyBtn: document.getElementById("copyBtn"),
+      copyResultBtn: document.getElementById("copyResultBtn"),
+      copyFormulaBtn: document.getElementById("copyFormulaBtn"),
       downloadBtn: document.getElementById("downloadBtn"),
+      resultText: document.getElementById("resultText"),
       formulaText: document.getElementById("formulaText"),
       preview: document.getElementById("preview"),
       previewHint: document.getElementById("previewHint"),
       rowCount: document.getElementById("rowCount"),
       mapCount: document.getElementById("mapCount"),
       previewCount: document.getElementById("previewCount"),
+      unmatchedCount: document.getElementById("unmatchedCount"),
+      unmatchedText: document.getElementById("unmatchedText"),
       status: document.getElementById("status"),
       message: document.getElementById("message")
     };
@@ -418,10 +451,13 @@
       sourceWorkbook: null,
       sourceFileName: "",
       mapWorkbook: null,
+      mapEntries: [],
       generated: null
     };
 
     const columnHints = ["网点", "营业部", "分公司", "机构", "销售商", "渠道", "名称"];
+    const strongColumnHints = ["网点", "营业部", "分公司", "一级分公司", "二级分公司"];
+    const badColumnHints = ["产品", "代码", "金额", "保有", "销量", "赎回", "份额", "日期", "类型"];
     const mapKeyHints = ["地级", "城市", "市", "区县", "县", "省份"];
     const areaHints = ["区域", "地区", "片区"];
 
@@ -487,6 +523,66 @@
       return fallback;
     }
 
+    function normalizeText(value) {
+      return String(value == null ? "" : value).trim();
+    }
+
+    function isLikelyMapKey(value) {
+      const text = normalizeText(value);
+      return text.length >= 2 && /[\u4e00-\u9fff]/.test(text) && !/[A-Za-zА-Яа-яЁё]/.test(text);
+    }
+
+    function mapEntries() {
+      const rows = sheetRows(mapWorkbook(), mapSheetName());
+      const keyIndex = Number(els.mapKeyColumn.value || 0);
+      const areaIndex = Number(els.mapAreaColumn.value || 0);
+      return rows.slice(1)
+        .map(row => ({
+          key: normalizeText(row[keyIndex]),
+          area: normalizeText(row[areaIndex])
+        }))
+        .filter(item => isLikelyMapKey(item.key) && item.area);
+    }
+
+    function resolveArea(name, entries = state.mapEntries) {
+      const text = normalizeText(name);
+      if (!text) return "";
+      const hit = entries.find(item => text.includes(item.key));
+      return hit ? hit.area : "未找到";
+    }
+
+    function isSummaryName(value) {
+      const text = normalizeText(value);
+      return text === "合计" || text === "总计" || text === "汇总";
+    }
+
+    function bestNameColumnIndex() {
+      const rows = sheetRows(state.sourceWorkbook, sourceSheetName());
+      const headers = rows[0] || [];
+      const fallback = bestIndex(headers, columnHints, Math.min(1, Math.max(0, headers.length - 1)));
+      const entries = mapEntries();
+      if (!rows.length || !entries.length) return fallback;
+
+      let best = { index: fallback, score: -1 };
+      headers.forEach((header, index) => {
+        const headerText = normalizeText(header);
+        let score = columnHints.some(hint => headerText.includes(hint)) ? 20 : 0;
+        if (strongColumnHints.some(hint => headerText.includes(hint))) score += 45;
+        if (badColumnHints.some(hint => headerText.includes(hint))) score -= 80;
+        const sampleRows = rows.slice(1, Math.min(rows.length, 80));
+        for (const row of sampleRows) {
+          const value = normalizeText(row[index]);
+          if (!value) continue;
+          const area = resolveArea(value, entries);
+          if (area !== "未找到") score += 3;
+          if (value.includes("营业部") || value.includes("分公司")) score += 5;
+          if (value.includes("证券")) score += 1;
+        }
+        if (score > best.score) best = { index, score };
+      });
+      return best.index;
+    }
+
     function looksLikeMapSheet(workbook, sheetName) {
       const headers = headerOf(workbook, sheetName).map(value => String(value).trim());
       return headers.some(value => value.includes("区域")) &&
@@ -521,6 +617,11 @@
       return XLSX.utils.encode_col(Number(select.value));
     }
 
+    function mapLastRowNumber() {
+      const rows = sheetRows(mapWorkbook(), mapSheetName());
+      return Math.max(2, rows.length);
+    }
+
     function quotedSheet(name) {
       return "'" + String(name).replace(/'/g, "''") + "'";
     }
@@ -550,7 +651,7 @@
 
     function refreshNameColumns() {
       const headers = headerOf(state.sourceWorkbook, sourceSheetName());
-      fillSelect(els.nameColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestIndex(headers, columnHints, Math.min(1, headers.length - 1)));
+      fillSelect(els.nameColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestNameColumnIndex());
       updatePreview();
     }
 
@@ -558,6 +659,8 @@
       const headers = headerOf(mapWorkbook(), mapSheetName());
       fillSelect(els.mapKeyColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestIndex(headers, mapKeyHints, 0));
       fillSelect(els.mapAreaColumn, headers, (value, index) => `${XLSX.utils.encode_col(index)}：${value || "(空表头)"}`, bestIndex(headers, areaHints, Math.min(2, headers.length - 1)));
+      state.mapEntries = mapEntries();
+      refreshNameColumns();
       updatePreview();
     }
 
@@ -567,20 +670,29 @@
       if (ready) setStatus("已就绪");
     }
 
-    function buildFormula(rowNumber) {
+    function buildLookupFormula(rowNumber) {
       const nameLetter = finalNameColumnLetter();
       const keyLetter = selectedColumnLetter(els.mapKeyColumn);
       const areaLetter = selectedColumnLetter(els.mapAreaColumn);
       const sheet = quotedSheet(els.outputSheetName.value.trim() || mapSheetName());
-      return `=XLOOKUP(TRUE,ISNUMBER(FIND(${sheet}!$${keyLetter}:$${keyLetter},${nameLetter}${rowNumber})),${sheet}!$${areaLetter}:$${areaLetter},"未找到",0)`;
+      const lastMapRow = mapLastRowNumber();
+      const keyRange = `${sheet}!$${keyLetter}$2:$${keyLetter}$${lastMapRow}`;
+      const areaRange = `${sheet}!$${areaLetter}$2:$${areaLetter}$${lastMapRow}`;
+      return `=IFERROR(XLOOKUP(TRUE,ISNUMBER(SEARCH(${keyRange},${nameLetter}${rowNumber})),${areaRange}),"未找到")`;
     }
 
-    function buildExcelFormula(rowNumber) {
-      return buildFormula(rowNumber);
+    function buildFormula(rowNumber, firstDataRow = 2) {
+      const nameLetter = finalNameColumnLetter();
+      const lookup = buildLookupFormula(rowNumber).slice(1);
+      const nameCell = `${nameLetter}${rowNumber}`;
+      const summaryCheck = `OR(${nameCell}="合计",${nameCell}="总计",${nameCell}="汇总")`;
+      if (rowNumber <= firstDataRow) return `=IF(${summaryCheck},"",${lookup})`;
+      return `=IF(${summaryCheck},"",IF(${nameCell}="",A${rowNumber - 1},${lookup}))`;
     }
 
     function generate() {
       const range = sheetRange(state.sourceWorkbook, sourceSheetName());
+      const rows = sheetRows(state.sourceWorkbook, sourceSheetName());
       if (!range) {
         setMessage("业务 sheet 没有可读取区域。", "bad");
         return;
@@ -593,17 +705,40 @@
       }
 
       const lastRow = range.e.r + 1;
+      state.mapEntries = mapEntries();
+      const nameIndex = Number(els.nameColumn.value || 0);
+      const results = ["区域"];
       const formulas = ["区域"];
+      const unmatched = [];
+      let lastArea = "";
       for (let row = firstDataRow; row <= lastRow; row += 1) {
-        formulas.push(buildFormula(row));
+        const name = rows[row - 1]?.[nameIndex] || "";
+        const normalizedName = normalizeText(name);
+        let area = normalizedName ? resolveArea(name) : lastArea;
+        if (isSummaryName(normalizedName)) area = "";
+        if (normalizedName && !isSummaryName(normalizedName) && area === "未找到") unmatched.push({ row, name: normalizedName });
+        if (area && area !== "未找到") lastArea = area;
+        results.push(area);
+        formulas.push(buildFormula(row, firstDataRow));
       }
 
+      els.resultText.value = results.join("\n");
       els.formulaText.value = formulas.join("\n");
+      els.unmatchedText.value = unmatched.length
+        ? unmatched.map(item => `第 ${item.row} 行：${item.name || "(空)"}`).join("\n")
+        : "全部匹配";
       els.rowCount.textContent = Math.max(0, lastRow - firstDataRow + 1);
-      els.copyBtn.disabled = false;
+      els.unmatchedCount.textContent = unmatched.length;
+      els.copyResultBtn.disabled = false;
+      els.copyFormulaBtn.disabled = false;
       els.downloadBtn.disabled = false;
-      state.generated = { formulas, firstDataRow, lastRow };
-      setMessage("已生成第一列公式。", "good");
+      state.generated = { results, formulas, unmatched, firstDataRow, lastRow };
+      if (unmatched.length) {
+        const sample = unmatched.slice(0, 3).map(item => item.row).join("、");
+        setMessage(`已生成区域结果；${unmatched.length} 行未匹配，如第 ${sample} 行。`, "warn");
+      } else {
+        setMessage("已生成区域结果，全部匹配。", "good");
+      }
       updatePreview(true);
     }
 
@@ -623,15 +758,12 @@
         return ["", ...row];
       });
       const outputSheet = XLSX.utils.aoa_to_sheet(outputRows);
-      const adjustedNameCol = finalNameColumnLetter();
-      const keyLetter = selectedColumnLetter(els.mapKeyColumn);
-      const areaLetter = selectedColumnLetter(els.mapAreaColumn);
       const mapName = els.outputSheetName.value.trim() || "地区总表";
       for (let row = firstDataRow; row <= state.generated.lastRow; row += 1) {
         const cellAddress = `A${row}`;
         outputSheet[cellAddress] = {
           t: "s",
-          f: `XLOOKUP(TRUE,ISNUMBER(FIND('${mapName.replace(/'/g, "''")}'!$${keyLetter}:$${keyLetter},${adjustedNameCol}${row})),'${mapName.replace(/'/g, "''")}'!$${areaLetter}:$${areaLetter},"未找到",0)`
+          v: state.generated.results[row - firstDataRow + 1] || ""
         };
       }
 
@@ -648,9 +780,14 @@
       return cleaned || "Sheet";
     }
 
-    async function copyOutput() {
+    async function copyResultOutput() {
+      await navigator.clipboard.writeText(els.resultText.value);
+      setMessage("区域结果已复制。", "good");
+    }
+
+    async function copyFormulaOutput() {
       await navigator.clipboard.writeText(els.formulaText.value);
-      setMessage("第一列已复制。", "good");
+      setMessage("公式列已复制。", "good");
     }
 
     async function downloadOutput() {
@@ -676,12 +813,16 @@
       const slice = rows.slice(0, Math.min(rows.length, 16));
       const table = document.createElement("table");
       const tbody = document.createElement("tbody");
+      const previewEntries = state.generated ? state.mapEntries : mapEntries();
 
       slice.forEach((row, rowIndex) => {
         const tr = document.createElement("tr");
+        const areaValue = afterGenerate && rowIndex + 1 >= firstDataRow
+          ? (state.generated?.results[rowIndex - firstDataRow + 2] || resolveArea(row[nameIndex] || "", previewEntries))
+          : "";
         const displayCells = rowIndex === 0
           ? ["区域", ...row.slice(0, 5)]
-          : [afterGenerate && rowIndex + 1 >= firstDataRow ? buildFormula(rowIndex + 1) : "", ...row.slice(0, 5)];
+          : [areaValue, ...row.slice(0, 5)];
         displayCells.forEach((value, colIndex) => {
           const cell = document.createElement(rowIndex === 0 ? "th" : "td");
           cell.textContent = String(value || "");
@@ -706,9 +847,13 @@
         state.sourceWorkbook = await readWorkbook(file);
         state.sourceFileName = file.name;
         state.generated = null;
-        els.copyBtn.disabled = true;
+        els.copyResultBtn.disabled = true;
+        els.copyFormulaBtn.disabled = true;
         els.downloadBtn.disabled = true;
+        els.resultText.value = "";
         els.formulaText.value = "";
+        els.unmatchedText.value = "";
+        els.unmatchedCount.textContent = "0";
         refreshSourceControls();
         refreshMapControls();
         setMessage(`已读取：${file.name}`, "good");
@@ -729,9 +874,13 @@
         setStatus("读取地区总表");
         state.mapWorkbook = await readWorkbook(file);
         state.generated = null;
-        els.copyBtn.disabled = true;
+        els.copyResultBtn.disabled = true;
+        els.copyFormulaBtn.disabled = true;
         els.downloadBtn.disabled = true;
+        els.resultText.value = "";
         els.formulaText.value = "";
+        els.unmatchedText.value = "";
+        els.unmatchedCount.textContent = "0";
         refreshMapControls();
         setMessage(`已读取总表：${file.name}`, "good");
       } catch (error) {
@@ -740,17 +889,31 @@
       }
     });
 
-    els.sourceSheet.addEventListener("change", refreshNameColumns);
-    els.mapSheet.addEventListener("change", refreshMapColumns);
-    els.nameColumn.addEventListener("change", updatePreview);
-    els.mapKeyColumn.addEventListener("change", updatePreview);
-    els.mapAreaColumn.addEventListener("change", updatePreview);
-    els.firstDataRow.addEventListener("input", updatePreview);
+    function refreshOrRegenerate(callback) {
+      callback();
+      if (state.generated && !els.generateBtn.disabled) generate();
+    }
+
+    els.sourceSheet.addEventListener("change", () => refreshOrRegenerate(refreshNameColumns));
+    els.mapSheet.addEventListener("change", () => refreshOrRegenerate(refreshMapColumns));
+    els.nameColumn.addEventListener("change", () => state.generated ? generate() : updatePreview());
+    els.mapKeyColumn.addEventListener("change", () => {
+      state.mapEntries = mapEntries();
+      if (state.generated) generate();
+      else updatePreview();
+    });
+    els.mapAreaColumn.addEventListener("change", () => {
+      state.mapEntries = mapEntries();
+      if (state.generated) generate();
+      else updatePreview();
+    });
+    els.firstDataRow.addEventListener("input", () => state.generated ? generate() : updatePreview());
     els.outputSheetName.addEventListener("input", () => {
       if (state.generated) generate();
     });
     els.generateBtn.addEventListener("click", generate);
-    els.copyBtn.addEventListener("click", copyOutput);
+    els.copyResultBtn.addEventListener("click", copyResultOutput);
+    els.copyFormulaBtn.addEventListener("click", copyFormulaOutput);
     els.downloadBtn.addEventListener("click", downloadOutput);
 
     setMessage("上传待处理表后开始。");
