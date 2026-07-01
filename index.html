@@ -325,6 +325,12 @@
       display: block;
     }
 
+    .image-preview canvas {
+      max-width: 100%;
+      max-height: 360px;
+      display: block;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -438,6 +444,25 @@
               <option value="eng">英文/数字</option>
               <option value="chi_sim">中文</option>
             </select>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="ocrPreprocess">图片处理</label>
+              <select id="ocrPreprocess">
+                <option value="auto">增强清晰度</option>
+                <option value="hard">强力黑白</option>
+                <option value="original">原图识别</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ocrPsm">识别版式</label>
+              <select id="ocrPsm">
+                <option value="6">表格/文本块</option>
+                <option value="4">多列表格</option>
+                <option value="11">零散文字</option>
+                <option value="3">自动判断</option>
+              </select>
+            </div>
           </div>
           <div class="actions">
             <button id="ocrBtn" disabled>识别图片</button>
@@ -612,6 +637,8 @@
       downloadBtn: document.getElementById("downloadBtn"),
       imageFile: document.getElementById("imageFile"),
       ocrLang: document.getElementById("ocrLang"),
+      ocrPreprocess: document.getElementById("ocrPreprocess"),
+      ocrPsm: document.getElementById("ocrPsm"),
       ocrBtn: document.getElementById("ocrBtn"),
       copyOcrBtn: document.getElementById("copyOcrBtn"),
       copyOcrInlineBtn: document.getElementById("copyOcrInlineBtn"),
@@ -711,6 +738,129 @@
       return parseOcrTable(els.ocrText.value);
     }
 
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("图片加载失败"));
+        };
+        img.src = url;
+      });
+    }
+
+    function preprocessImageData(imageData, mode) {
+      const data = imageData.data;
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        sum += gray;
+      }
+      const avg = sum / (data.length / 4);
+      const threshold = mode === "hard" ? Math.max(145, Math.min(210, avg * 0.96)) : null;
+      const contrast = mode === "hard" ? 1.9 : 1.45;
+      for (let i = 0; i < data.length; i += 4) {
+        let gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        gray = Math.max(0, Math.min(255, (gray - 128) * contrast + 128));
+        if (threshold != null) gray = gray > threshold ? 255 : 0;
+        data[i] = gray;
+        data[i + 1] = gray;
+        data[i + 2] = gray;
+      }
+      return imageData;
+    }
+
+    async function makeOcrImage(file) {
+      if (els.ocrPreprocess.value === "original") return file;
+      const img = await loadImage(file);
+      const maxSide = els.ocrPreprocess.value === "hard" ? 3200 : 2600;
+      const minScale = img.width < 1400 && img.height < 1400 ? 2 : 1;
+      const scale = Math.min(maxSide / Math.max(img.width, img.height), minScale);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctx.putImageData(preprocessImageData(imageData, els.ocrPreprocess.value), 0, 0);
+      return await new Promise(resolve => {
+        canvas.toBlob(blob => resolve(blob || file), "image/png");
+      });
+    }
+
+    function previewProcessedImage(file) {
+      if (!file || els.ocrPreprocess.value === "original") return;
+      makeOcrImage(file).then(blob => {
+        if (!blob || blob === file) return;
+        const url = URL.createObjectURL(blob);
+        els.imagePreview.innerHTML = "";
+        const img = document.createElement("img");
+        img.alt = "预处理后的图片";
+        img.src = url;
+        img.onload = () => URL.revokeObjectURL(url);
+        els.imagePreview.appendChild(img);
+      }).catch(() => {});
+    }
+
+    function rowsFromOcrWords(words) {
+      const usable = (words || [])
+        .filter(word => normalizeText(word.text).length && word.bbox)
+        .map(word => ({
+          text: normalizeText(word.text),
+          x0: word.bbox.x0,
+          x1: word.bbox.x1,
+          y0: word.bbox.y0,
+          y1: word.bbox.y1,
+          cy: (word.bbox.y0 + word.bbox.y1) / 2,
+          height: Math.max(1, word.bbox.y1 - word.bbox.y0)
+        }));
+      if (!usable.length) return [];
+      const medianHeight = usable.map(word => word.height).sort((a, b) => a - b)[Math.floor(usable.length / 2)] || 12;
+      const lines = [];
+      usable.sort((a, b) => a.cy - b.cy).forEach(word => {
+        let line = lines.find(item => Math.abs(item.cy - word.cy) <= medianHeight * 0.65);
+        if (!line) {
+          line = { cy: word.cy, words: [] };
+          lines.push(line);
+        }
+        line.words.push(word);
+        line.cy = (line.cy * (line.words.length - 1) + word.cy) / line.words.length;
+      });
+      return lines
+        .sort((a, b) => a.cy - b.cy)
+        .map(line => {
+          const sorted = line.words.sort((a, b) => a.x0 - b.x0);
+          const widths = sorted.map(word => Math.max(1, word.x1 - word.x0));
+          const medianWidth = widths.sort((a, b) => a - b)[Math.floor(widths.length / 2)] || medianHeight;
+          const row = [];
+          let cell = "";
+          let prev = null;
+          for (const word of sorted) {
+            const gap = prev ? word.x0 - prev.x1 : 0;
+            const shouldBreak = prev && gap > Math.max(medianWidth * 0.9, medianHeight * 1.4);
+            if (shouldBreak && cell) {
+              row.push(cell.trim());
+              cell = "";
+            }
+            const joiner = /[\u4e00-\u9fff]$/.test(cell) || /^[\u4e00-\u9fff]/.test(word.text) ? "" : " ";
+            cell += cell ? joiner + word.text : word.text;
+            prev = word;
+          }
+          if (cell) row.push(cell.trim());
+          return row;
+        })
+        .filter(row => row.length);
+    }
+
     async function recognizeImage() {
       if (!state.imageFile) {
         setOcrMessage("请先选择图片。", "bad");
@@ -727,14 +877,18 @@
       els.ocrText.value = "";
       try {
         setOcrMessage("正在识别图片：0%");
-        const result = await Tesseract.recognize(state.imageFile, els.ocrLang.value, {
+        const imageForOcr = await makeOcrImage(state.imageFile);
+        const result = await Tesseract.recognize(imageForOcr, els.ocrLang.value, {
+          tessedit_pageseg_mode: els.ocrPsm.value,
+          preserve_interword_spaces: "1",
           logger(info) {
             if (info.status === "recognizing text") {
               setOcrMessage(`正在识别图片：${Math.round((info.progress || 0) * 100)}%`);
             }
           }
         });
-        const rows = parseOcrTable(result.data.text);
+        const rowsByPosition = rowsFromOcrWords(result.data.words);
+        const rows = rowsByPosition.length ? rowsByPosition : parseOcrTable(result.data.text);
         els.ocrText.value = rows.length ? tableToText(rows) : result.data.text.trim();
         const hasResult = Boolean(els.ocrText.value.trim());
         els.copyOcrBtn.disabled = !hasResult;
@@ -1221,7 +1375,21 @@
       img.src = url;
       img.onload = () => URL.revokeObjectURL(url);
       els.imagePreview.appendChild(img);
+      previewProcessedImage(file);
       setOcrMessage(`已选择：${file.name}`, "good");
+    });
+
+    els.ocrPreprocess.addEventListener("change", () => {
+      if (!state.imageFile) return;
+      const url = URL.createObjectURL(state.imageFile);
+      els.imagePreview.innerHTML = "";
+      const img = document.createElement("img");
+      img.alt = "待识别图片";
+      img.src = url;
+      img.onload = () => URL.revokeObjectURL(url);
+      els.imagePreview.appendChild(img);
+      previewProcessedImage(state.imageFile);
+      setOcrMessage(els.ocrPreprocess.value === "original" ? "已切换为原图识别。" : "已更新预处理预览。", "good");
     });
 
     function refreshOrRegenerate(callback) {
