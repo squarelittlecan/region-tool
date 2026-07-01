@@ -410,25 +410,25 @@
     <header>
       <div>
         <h1>表格处理工具</h1>
-        <div class="sub">功能一把图片识别成表格，功能二按地区总表生成分区结果和公式。</div>
+        <div class="sub">功能一按地区总表生成分区结果和公式；功能二图片转表格正在开发中。</div>
       </div>
       <div class="status" id="status">等待上传</div>
     </header>
 
     <section class="guide">
       <b>使用说明：</b>
-      <span>先在下方选择功能模块。图片转表格适合清晰截图；分区推荐使用 <b>Sheet1</b> 待处理表 + <b>Sheet2</b> 地区总表。</span>
+      <span>先在下方选择功能模块。分区推荐使用 <b>Sheet1</b> 待处理表 + <b>Sheet2</b> 地区总表；图片转表格正在开发中。</span>
       <div class="guide-line"><a href="./docs.html">详细说明</a> · <a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
     </section>
 
     <nav class="module-tabs" aria-label="功能选择">
-      <button class="module-tab active" type="button" data-module="ocr">功能一：图片转表格（正在开发中）</button>
-      <button class="module-tab" type="button" data-module="region">功能二：分区</button>
+      <button class="module-tab active" type="button" data-module="region">功能一：分区</button>
+      <button class="module-tab" type="button" data-module="ocr">功能二：图片转表格（正在开发中）</button>
     </nav>
 
-    <section class="tool-section module-panel active" id="module-ocr">
+    <section class="tool-section module-panel" id="module-ocr">
       <div class="tool-heading">
-        <h2>功能一：图片转 Excel 表格（正在开发中）</h2>
+        <h2>功能二：图片转 Excel 表格（正在开发中）</h2>
         <span class="hint">当前 OCR 效果不稳定，暂不建议正式使用。</span>
       </div>
       <section class="grid">
@@ -491,9 +491,9 @@
       </section>
     </section>
 
-    <section class="tool-section module-panel" id="module-region">
+    <section class="tool-section module-panel active" id="module-region">
       <div class="tool-heading">
-        <h2>功能二：分区</h2>
+        <h2>功能一：分区</h2>
         <span class="hint">根据 Sheet2 地区总表，为 Sheet1 的机构生成区域、省份或地级；公式也按 Sheet1 + Sheet2 结构生成。</span>
       </div>
     <section class="grid">
@@ -1430,7 +1430,7 @@
     });
 
     setMessage("上传待处理表后开始。");
-    switchModule("ocr");
+    switchModule("region");
   </script>
 </body>
 </html>
