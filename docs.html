@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>表格处理工具说明</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #19212a;
+      background: #eef3f7;
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(900px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 30px 0 44px;
+    }
+
+    article {
+      background: #fff;
+      border: 1px solid #d9e1ea;
+      border-radius: 8px;
+      padding: 22px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: 28px;
+    }
+
+    h2 {
+      margin: 24px 0 8px;
+      font-size: 18px;
+    }
+
+    p,
+    li {
+      font-size: 14px;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #f4f7fa;
+      font-family: Consolas, "Cascadia Mono", monospace;
+    }
+
+    a {
+      color: #0f766e;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>表格处理工具说明</h1>
+      <p><a href="./index.html">返回工具</a> · <a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></p>
+
+      <h2>功能一：图片转 Excel 表格</h2>
+      <p>上传清晰的表格截图或扫描图，点击“识别图片”。工具会在浏览器内做 OCR，把识别结果整理成可复制的制表符文本，也可以下载为 Excel。</p>
+      <ul>
+        <li>推荐使用正向、清晰、背景干净的图片。</li>
+        <li>识别后可以直接在结果框里修改，再复制或下载。</li>
+        <li>复杂表格线、合并单元格、模糊截图可能需要人工微调。</li>
+        <li>OCR 组件从公开 CDN 加载，图片识别过程在浏览器端完成。</li>
+      </ul>
+
+      <h2>功能二：分区</h2>
+      <p>推荐把待处理表和地区总表放在同一个 Excel 文件里：</p>
+      <ul>
+        <li><code>Sheet1</code>：待处理表，包含机构、网点、分公司、营业部、分行、支行等名称列。</li>
+        <li><code>Sheet2</code>：地区总表，至少包含 <code>地级</code>、<code>省份</code>、<code>区域</code> 这类列。</li>
+      </ul>
+
+      <h2>公式约定</h2>
+      <p>工具生成的公式默认按 <code>Sheet1</code> 是待处理表、<code>Sheet2</code> 是地区总表来写，方便复制到 <code>Sheet1</code> 的 A 列检查。比如输出“区域”时，公式会按地区总表实际列和行数生成：</p>
+      <p><code>=IFERROR(XLOOKUP(TRUE,ISNUMBER(SEARCH('Sheet2'!$A$2:$A$3141,C2)),'Sheet2'!$C$2:$C$3141),"未找到")</code></p>
+      <p>如果你的 sheet 名不同，可以在页面左侧手动调整业务 sheet、总表 sheet 和“公式总表 sheet 名”。</p>
+
+      <h2>未匹配行</h2>
+      <p>如果地区总表里没有对应地名，结果会显示“未找到”，页面也会列出行号和机构名。少量未匹配通常可以手动补充，或者把缺少的地名补到 <code>Sheet2</code> 地区总表里。</p>
+    </article>
+  </main>
+</body>
+</html>

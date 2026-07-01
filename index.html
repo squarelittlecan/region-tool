@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>区域列生成器</title>
+  <title>表格处理工具</title>
   <script src="./xlsx-lite.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -75,6 +76,25 @@
       grid-template-columns: 360px 1fr;
       gap: 16px;
       align-items: start;
+    }
+
+    .tool-section {
+      margin-top: 16px;
+    }
+
+    .tool-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 10px;
+    }
+
+    .tool-heading h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: 0;
     }
 
     .panel {
@@ -254,6 +274,22 @@
       border-radius: 8px;
     }
 
+    .image-preview {
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      overflow: hidden;
+    }
+
+    .image-preview img {
+      max-width: 100%;
+      max-height: 360px;
+      display: block;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -332,8 +368,8 @@
   <main class="app">
     <header>
       <div>
-        <h1>区域列生成器</h1>
-        <div class="sub">本地读取 Excel，直接生成可复制的区域结果，也可查看对应公式。</div>
+        <h1>表格处理工具</h1>
+        <div class="sub">功能一把图片识别成表格，功能二按地区总表生成分区结果和公式。</div>
       </div>
       <div class="status" id="status">等待上传</div>
     </header>
@@ -341,9 +377,60 @@
     <section class="guide">
       <b>使用约定：</b>
       <span>推荐把待处理表放在 <b>Sheet1</b>，地区总表放在 <b>Sheet2</b>；地区总表至少包含“地级 / 省份 / 区域”这类列。</span>
-      <div class="guide-line">公式按同一个 Excel 内的 <b>Sheet1 + Sheet2</b> 结构生成，方便复制到 Sheet1 的 A 列检查；如果实际 sheet 名不同，可在左侧调整。<a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
+      <div class="guide-line">公式按同一个 Excel 内的 <b>Sheet1 + Sheet2</b> 结构生成，方便复制到 Sheet1 的 A 列检查；如果实际 sheet 名不同，可在左侧调整。<a href="./docs.html">详细说明</a> · <a href="./sample-region-tool.xlsx" download>下载伪造案例 Excel</a></div>
     </section>
 
+    <section class="tool-section">
+      <div class="tool-heading">
+        <h2>功能一：图片转 Excel 表格</h2>
+        <span class="hint">适合清晰截图或扫描件；复杂表格识别后可直接编辑结果。</span>
+      </div>
+      <section class="grid">
+        <aside class="panel stack">
+          <div class="field">
+            <label for="imageFile">图片文件</label>
+            <input id="imageFile" type="file" accept="image/*">
+          </div>
+          <div class="field">
+            <label for="ocrLang">识别语言</label>
+            <select id="ocrLang">
+              <option value="chi_sim+eng">中文 + 英文</option>
+              <option value="eng">英文/数字</option>
+              <option value="chi_sim">中文</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button id="ocrBtn" disabled>识别图片</button>
+            <button class="secondary" id="copyOcrBtn" disabled>复制表格</button>
+            <button class="secondary" id="downloadOcrBtn" disabled>下载 Excel</button>
+          </div>
+          <div class="message" id="ocrMessage">上传图片后开始。</div>
+        </aside>
+        <section class="stack">
+          <div class="panel stack">
+            <div class="actions">
+              <span class="pill">识别结果</span>
+              <button class="secondary mini" id="copyOcrInlineBtn" disabled>复制</button>
+              <span class="hint">可先在这里微调，再复制或下载。</span>
+            </div>
+            <textarea id="ocrText" spellcheck="false"></textarea>
+          </div>
+          <div class="panel stack">
+            <div class="actions">
+              <span class="pill">图片预览</span>
+              <span class="hint">清晰、正向、背景干净的图片更容易识别。</span>
+            </div>
+            <div class="image-preview" id="imagePreview"><span class="hint">尚未选择图片</span></div>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <section class="tool-section">
+      <div class="tool-heading">
+        <h2>功能二：分区</h2>
+        <span class="hint">根据 Sheet2 地区总表，为 Sheet1 的机构生成区域、省份或地级。</span>
+      </div>
     <section class="grid">
       <aside class="panel stack">
         <div class="field">
@@ -462,6 +549,7 @@
         </div>
       </section>
     </section>
+    </section>
   </main>
 
   <script>
@@ -482,6 +570,15 @@
       copyFormulaInlineBtn: document.getElementById("copyFormulaInlineBtn"),
       copyUnmatchedBtn: document.getElementById("copyUnmatchedBtn"),
       downloadBtn: document.getElementById("downloadBtn"),
+      imageFile: document.getElementById("imageFile"),
+      ocrLang: document.getElementById("ocrLang"),
+      ocrBtn: document.getElementById("ocrBtn"),
+      copyOcrBtn: document.getElementById("copyOcrBtn"),
+      copyOcrInlineBtn: document.getElementById("copyOcrInlineBtn"),
+      downloadOcrBtn: document.getElementById("downloadOcrBtn"),
+      ocrText: document.getElementById("ocrText"),
+      ocrMessage: document.getElementById("ocrMessage"),
+      imagePreview: document.getElementById("imagePreview"),
       resultText: document.getElementById("resultText"),
       formulaText: document.getElementById("formulaText"),
       resultTitle: document.getElementById("resultTitle"),
@@ -501,6 +598,7 @@
       sourceFileName: "",
       mapWorkbook: null,
       mapEntries: [],
+      imageFile: null,
       generated: null
     };
 
@@ -533,6 +631,86 @@
         reader.onerror = () => reject(reader.error);
         reader.readAsArrayBuffer(file);
       });
+    }
+
+    function setOcrMessage(text, type = "") {
+      els.ocrMessage.textContent = text;
+      els.ocrMessage.className = `message ${type}`.trim();
+    }
+
+    function parseOcrTable(text) {
+      return String(text || "")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => {
+          if (line.includes("\t")) return line.split("\t").map(cell => cell.trim());
+          if (/\s{2,}/.test(line)) return line.split(/\s{2,}/).map(cell => cell.trim());
+          return line.split(/\s+/).map(cell => cell.trim()).filter(Boolean);
+        })
+        .filter(row => row.length);
+    }
+
+    function tableToText(rows) {
+      return rows.map(row => row.join("\t")).join("\n");
+    }
+
+    function ocrRowsFromTextarea() {
+      return parseOcrTable(els.ocrText.value);
+    }
+
+    async function recognizeImage() {
+      if (!state.imageFile) {
+        setOcrMessage("请先选择图片。", "bad");
+        return;
+      }
+      if (!window.Tesseract) {
+        setOcrMessage("OCR 组件加载失败，请刷新页面后重试。", "bad");
+        return;
+      }
+      els.ocrBtn.disabled = true;
+      els.copyOcrBtn.disabled = true;
+      els.copyOcrInlineBtn.disabled = true;
+      els.downloadOcrBtn.disabled = true;
+      els.ocrText.value = "";
+      try {
+        setOcrMessage("正在识别图片：0%");
+        const result = await Tesseract.recognize(state.imageFile, els.ocrLang.value, {
+          logger(info) {
+            if (info.status === "recognizing text") {
+              setOcrMessage(`正在识别图片：${Math.round((info.progress || 0) * 100)}%`);
+            }
+          }
+        });
+        const rows = parseOcrTable(result.data.text);
+        els.ocrText.value = rows.length ? tableToText(rows) : result.data.text.trim();
+        const hasResult = Boolean(els.ocrText.value.trim());
+        els.copyOcrBtn.disabled = !hasResult;
+        els.copyOcrInlineBtn.disabled = !hasResult;
+        els.downloadOcrBtn.disabled = !hasResult;
+        setOcrMessage(hasResult ? `识别完成，共 ${rows.length || 1} 行。` : "未识别到文本。", hasResult ? "good" : "warn");
+      } catch (error) {
+        setOcrMessage(`识别失败：${error.message || error}`, "bad");
+      } finally {
+        els.ocrBtn.disabled = false;
+      }
+    }
+
+    async function copyOcrOutput() {
+      await navigator.clipboard.writeText(els.ocrText.value);
+      setOcrMessage("表格结果已复制。", "good");
+    }
+
+    async function downloadOcrWorkbook() {
+      const rows = ocrRowsFromTextarea();
+      if (!rows.length) {
+        setOcrMessage("没有可下载的识别结果。", "bad");
+        return;
+      }
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), "Sheet1");
+      await XLSX.writeFile(workbook, "图片识别表格.xlsx");
+      setOcrMessage("Excel 已生成。", "good");
     }
 
     function sheetRows(workbook, sheetName) {
@@ -970,6 +1148,30 @@
       }
     });
 
+    els.imageFile.addEventListener("change", event => {
+      const file = event.target.files[0];
+      state.imageFile = file || null;
+      els.ocrText.value = "";
+      els.copyOcrBtn.disabled = true;
+      els.copyOcrInlineBtn.disabled = true;
+      els.downloadOcrBtn.disabled = true;
+      if (!file) {
+        els.ocrBtn.disabled = true;
+        els.imagePreview.innerHTML = '<span class="hint">尚未选择图片</span>';
+        setOcrMessage("上传图片后开始。");
+        return;
+      }
+      els.ocrBtn.disabled = false;
+      const url = URL.createObjectURL(file);
+      els.imagePreview.innerHTML = "";
+      const img = document.createElement("img");
+      img.alt = "待识别图片";
+      img.src = url;
+      img.onload = () => URL.revokeObjectURL(url);
+      els.imagePreview.appendChild(img);
+      setOcrMessage(`已选择：${file.name}`, "good");
+    });
+
     function refreshOrRegenerate(callback) {
       callback();
       if (state.generated && !els.generateBtn.disabled) generate();
@@ -994,6 +1196,10 @@
       if (state.generated) generate();
     });
     els.generateBtn.addEventListener("click", generate);
+    els.ocrBtn.addEventListener("click", recognizeImage);
+    els.copyOcrBtn.addEventListener("click", copyOcrOutput);
+    els.copyOcrInlineBtn.addEventListener("click", copyOcrOutput);
+    els.downloadOcrBtn.addEventListener("click", downloadOcrWorkbook);
     els.copyResultBtn.addEventListener("click", copyResultOutput);
     els.copyFormulaBtn.addEventListener("click", copyFormulaOutput);
     els.copyResultInlineBtn.addEventListener("click", copyResultOutput);
