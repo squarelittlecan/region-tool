@@ -422,14 +422,14 @@
     </section>
 
     <nav class="module-tabs" aria-label="功能选择">
-      <button class="module-tab active" type="button" data-module="ocr">功能一：图片转表格</button>
+      <button class="module-tab active" type="button" data-module="ocr">功能一：图片转表格（正在开发中）</button>
       <button class="module-tab" type="button" data-module="region">功能二：分区</button>
     </nav>
 
     <section class="tool-section module-panel active" id="module-ocr">
       <div class="tool-heading">
-        <h2>功能一：图片转 Excel 表格</h2>
-        <span class="hint">适合清晰截图或扫描件；复杂表格识别后可直接编辑结果。</span>
+        <h2>功能一：图片转 Excel 表格（正在开发中）</h2>
+        <span class="hint">当前 OCR 效果不稳定，暂不建议正式使用。</span>
       </div>
       <section class="grid">
         <aside class="panel stack">
@@ -469,7 +469,7 @@
             <button class="secondary" id="copyOcrBtn" disabled>复制表格</button>
             <button class="secondary" id="downloadOcrBtn" disabled>下载 Excel</button>
           </div>
-          <div class="message" id="ocrMessage">上传图片后开始。</div>
+          <div class="message" id="ocrMessage">正在开发中，暂不建议使用。</div>
         </aside>
         <section class="stack">
           <div class="panel stack">
@@ -1361,13 +1361,12 @@
       els.copyOcrBtn.disabled = true;
       els.copyOcrInlineBtn.disabled = true;
       els.downloadOcrBtn.disabled = true;
+      els.ocrBtn.disabled = true;
       if (!file) {
-        els.ocrBtn.disabled = true;
         els.imagePreview.innerHTML = '<span class="hint">尚未选择图片</span>';
-        setOcrMessage("上传图片后开始。");
+        setOcrMessage("正在开发中，暂不建议使用。");
         return;
       }
-      els.ocrBtn.disabled = false;
       const url = URL.createObjectURL(file);
       els.imagePreview.innerHTML = "";
       const img = document.createElement("img");
@@ -1376,7 +1375,7 @@
       img.onload = () => URL.revokeObjectURL(url);
       els.imagePreview.appendChild(img);
       previewProcessedImage(file);
-      setOcrMessage(`已选择：${file.name}`, "good");
+      setOcrMessage(`已选择：${file.name}；图片识别功能仍在开发中。`, "warn");
     });
 
     els.ocrPreprocess.addEventListener("change", () => {
